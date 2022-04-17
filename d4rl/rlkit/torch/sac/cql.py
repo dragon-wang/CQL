@@ -138,9 +138,10 @@ class CQLTrainer(TorchTrainer):
 
     def _get_policy_actions(self, obs, num_actions, network=None):
         obs_temp = obs.unsqueeze(1).repeat(1, num_actions, 1).view(obs.shape[0] * num_actions, obs.shape[1])
-        new_obs_actions, _, _, new_obs_log_pi, *_ = network(
-            obs_temp, reparameterize=True, return_log_prob=True,
-        )
+        with torch.no_grad():
+            new_obs_actions, _, _, new_obs_log_pi, *_ = network(
+                obs_temp, reparameterize=True, return_log_prob=True,
+            )
         if not self.discrete:
             return new_obs_actions, new_obs_log_pi.view(obs.shape[0], num_actions, 1)
         else:
@@ -283,21 +284,21 @@ class CQLTrainer(TorchTrainer):
         """
         Update networks
         """
+        self._num_policy_update_steps += 1
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
         # Update the Q-functions iff 
         self._num_q_update_steps += 1
         self.qf1_optimizer.zero_grad()
-        qf1_loss.backward(retain_graph=True)
+        qf1_loss.backward()
         self.qf1_optimizer.step()
 
         if self.num_qs > 1:
             self.qf2_optimizer.zero_grad()
-            qf2_loss.backward(retain_graph=True)
+            qf2_loss.backward()
             self.qf2_optimizer.step()
-
-        self._num_policy_update_steps += 1
-        self.policy_optimizer.zero_grad()
-        policy_loss.backward(retain_graph=False)
-        self.policy_optimizer.step()
 
         """
         Soft Updates
